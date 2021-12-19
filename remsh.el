@@ -47,6 +47,15 @@
 (defvar-local remsh-current-process nil
   "Buffer-local variable for current comint process.")
 
+(defvar-local remsh-current-conn-args nil
+  "Buffer-local variable for current connection args.")
+
+(defvar remsh-last-buffer nil
+  "Buffer-local variable for last remsh buffer.")
+
+(defvar remsh-last-conn-args nil
+  "Buffer-local variable for current connection args.")
+
 ;;;###autoload (autoload 'remsh-connect "remsh")
 (transient-define-prefix remsh-connect (&optional transient)
   "Run an inferior Erlang shell that connects to another node using -remsh.
@@ -152,7 +161,7 @@ editing control characters:
 (defvar remsh-node-seq 167
   "Sequence number to make remsher node names unique.")
 
-(defun remsh-connect-regular (target-node args)
+(defun remsh-connect-regular (target-node args &optional reuse-window)
   "Run an inferior Erlang shell that connects to another node using -remsh.
 
 The command line history can be accessed with  M-p  and  M-n.
@@ -209,7 +218,9 @@ editing control characters:
     ;; Avoid querying user if erl-process is running when Emacs is exited.
     (set-process-query-on-exit-flag erl-process nil)
 
-    (switch-to-buffer-other-window erl-buffer)
+    (if reuse-window
+        (switch-to-buffer erl-buffer)
+      (switch-to-buffer-other-window erl-buffer))
 
     ;; comint settings
     (if (and (not (eq system-type 'windows-nt))
@@ -222,7 +233,10 @@ editing control characters:
     ;; Remember (buffer-local) stuff for remsh-set-inferior-erlang-buffer:
     ;; Must be _after_ call to `erlang-shell-mode' since it somehow changes it.
     (setq remsh-current-process-name proc-name)
-    (setq remsh-current-process erl-process)))
+    (setq remsh-current-process erl-process)
+    (setq remsh-current-conn-args (list target-node args)
+          remsh-last-conn-args    (list target-node args))
+    (setq remsh-last-buffer (current-buffer))))
 
 (defun remsh-split-transient-opts (transient-opts)
   (let ((opt-keys '("-setcookie "
@@ -242,9 +256,10 @@ editing control characters:
   (s-trim (remsh-cmd-output "hostname" "-f")))
 
 (defun remsh-buffer-name (base target-node)
-  (if (string= (substring base -1) "*")
-      (concat (substring base 0 -1) "-" target-node "*")
-    (concat base "-" target-node)))
+  (let ((base (if (string= (substring base -1) "*")
+                  (concat (substring base 0 -1) "-" target-node "*")
+                (concat base "-" target-node))))
+    (generate-new-buffer-name base)))
 
 (defun remsh-simple-send (proc string)
   (comint-send-string proc (concat string "\r\n")))
@@ -264,18 +279,45 @@ This is where compilation commands will go."
   (setq inferior-erlang-buffer (current-buffer))
   (message "This buffer is now set to the current inferior erlang buffer"))
 
+(defun remsh-reconnect ()
+  "Reconnect to a remote node in a new buffer.
+If called from a previous inferior Erlang remsh buffer, try to
+reconnect to this, else reconnect using the same remsh parameters as last.
+Set the new buffer as inferior, if the one we are reconneting from was."
+  (interactive)
+  (let* ((initially-is-inferior-erlang-buffer)
+         (conn-args))
+    (cond
+     ((not (null remsh-current-conn-args))
+      ;; Reuse buffer local var if set.
+      ;; This typically means we get called from an *Erlang-<x>* buffer.
+      (setq conn-args (append remsh-current-conn-args '(t)))
+      (setq initially-is-inferior-erlang-buffer
+            (equal (current-buffer) inferior-erlang-buffer)))
+     ((not (null remsh-last-conn-args))
+      ;; Fallback to reconnect to last remsh
+      ;; We are probably called from a non *Erlang-<x>* buffer.
+      (setq conn-args remsh-last-conn-args)
+      (setq initially-is-inferior-erlang-buffer
+            (equal remsh-last-buffer inferior-erlang-buffer)))
+     (t
+      (error "Not previously connected")))
+
+    (apply 'remsh-connect-regular conn-args)
+    (if initially-is-inferior-erlang-buffer
+        (remsh-set-inferior-erlang-buffer))))
+
 (add-hook 'erlang-mode-hook 'remsh-install-erl-keys)
 (add-hook 'erlang-shell-mode-hook 'remsh-install-erl-shell-keys)
 
 ;;;###autoload
 (defun remsh-install-erl-keys ()
-  (local-set-key "\C-cc" 'remsh-connect))
+  (local-set-key "\C-cc" 'remsh-connect)
+  (local-set-key "\C-cr" 'remsh-reconnect))
 
 ;;;###autoload
 (defun remsh-install-erl-shell-keys ()
   (local-set-key "\C-cs" 'remsh-set-inferior-erlang-buffer)
-  ;; Yet to implement:
-  ;;(local-set-key "\C-cr" 'remsh-reconnect)
-  )
+  (local-set-key "\C-cr" 'remsh-reconnect))
 
 (provide 'remsh)

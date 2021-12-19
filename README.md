@@ -10,6 +10,9 @@ as the buffer to use when compiling Erlang code from within Emacs.
 This is compiling and hot-loading code directly from Emacs
 into a running node.
 
+If the connection is broken for some reason or the Erlang node is
+restarted, `C-c r` will attempt to reconnect.
+
 Dependencies (available via [elpa](https://elpa.gnu.org/) or
 [melpa](https://melpa.org/)):
 

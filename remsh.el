@@ -41,6 +41,12 @@
 (defvar remsh-target-node-name-hist ()
   "History variable for reading remsh target node name.")
 
+(defvar-local remsh-current-process-name nil
+  "Buffer-local variable for name of current comint process.")
+
+(defvar-local remsh-current-process nil
+  "Buffer-local variable for current comint process.")
+
 ;;;###autoload (autoload 'remsh-connect "remsh")
 (transient-define-prefix remsh-connect (&optional transient)
   "Run an inferior Erlang shell that connects to another node using -remsh.
@@ -210,7 +216,13 @@ editing control characters:
              (eq inferior-erlang-shell-type 'newshell))
         (setq comint-process-echoes nil))
     (setq comint-input-sender 'remsh-simple-send)
-    (erlang-shell-mode)))
+
+    (erlang-shell-mode)
+
+    ;; Remember (buffer-local) stuff for remsh-set-inferior-erlang-buffer:
+    ;; Must be _after_ call to `erlang-shell-mode' since it somehow changes it.
+    (setq remsh-current-process-name proc-name)
+    (setq remsh-current-process erl-process)))
 
 (defun remsh-split-transient-opts (transient-opts)
   (let ((opt-keys '("-setcookie "
@@ -242,3 +254,28 @@ editing control characters:
   (with-output-to-string
     (with-current-buffer standard-output
       (apply 'call-process (append (list cmd nil t nil) args)))))
+
+
+(defun remsh-set-inferior-erlang-buffer ()
+  "Set current buffer to the inferior erlang buffer.
+This is where compilation commands will go."
+  (interactive)
+  (setq inferior-erlang-process remsh-current-process)
+  (setq inferior-erlang-buffer (current-buffer))
+  (message "This buffer is now set to the current inferior erlang buffer"))
+
+(add-hook 'erlang-mode-hook 'remsh-install-erl-keys)
+(add-hook 'erlang-shell-mode-hook 'remsh-install-erl-shell-keys)
+
+;;;###autoload
+(defun remsh-install-erl-keys ()
+  (local-set-key "\C-cc" 'remsh-connect))
+
+;;;###autoload
+(defun remsh-install-erl-shell-keys ()
+  (local-set-key "\C-cs" 'remsh-set-inferior-erlang-buffer)
+  ;; Yet to implement:
+  ;;(local-set-key "\C-cr" 'remsh-reconnect)
+  )
+
+(provide 'remsh)

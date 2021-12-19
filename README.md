@@ -5,6 +5,11 @@ running Erlang node, from within Emacs, as an inferior Erlang shell.
 
 Use `M-x remsh-connect` to connect.
 
+Once connected, `C-c s` will set the remsh-connected inferior Erlang shell
+as the buffer to use when compiling Erlang code from within Emacs.
+This is compiling and hot-loading code directly from Emacs
+into a running node.
+
 Dependencies (available via [elpa](https://elpa.gnu.org/) or
 [melpa](https://melpa.org/)):
 
